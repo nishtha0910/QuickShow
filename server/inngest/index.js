@@ -1,14 +1,16 @@
 import { Inngest } from "inngest";
 import User from "../models/User.js";
 
+export const inngest = new Inngest({
+  id: "movie-ticket-booking",
+});
 
-
-export const inngest = new Inngest({ id: "movie-ticket-booking" });
-
-// Inngest function to save user data to database
+// Save a newly created Clerk user
 const syncUserCreation = inngest.createFunction(
-  { id: "sync-user-from-clerk" },
-  { event: "clerk/user.created" },
+  {
+    id: "sync-user-from-clerk",
+    triggers: { event: "clerk/user.created" },
+  },
   async ({ event }) => {
     const {
       id,
@@ -20,30 +22,38 @@ const syncUserCreation = inngest.createFunction(
 
     const userData = {
       _id: id,
-      email: email_addresses[0].email_address,
+      email: email_addresses?.[0]?.email_address || "",
       name: `${first_name || ""} ${last_name || ""}`.trim(),
-      image: image_url,
+      image: image_url || "",
     };
 
     await User.create(userData);
+
+    return { success: true };
   }
 );
 
-// Inngest function to delete user data from database
+// Delete a Clerk user
 const syncUserDeletion = inngest.createFunction(
-  { id: "delete-user-with-clerk" },
-  { event: "clerk/user.deleted" },
+  {
+    id: "delete-user-with-clerk",
+    triggers: { event: "clerk/user.deleted" },
+  },
   async ({ event }) => {
     const { id } = event.data;
 
     await User.findByIdAndDelete(id);
+
+    return { success: true };
   }
 );
 
-// Inngest function to update user data in database
+// Update a Clerk user
 const syncUserUpdation = inngest.createFunction(
-  { id: "update-user-from-clerk" },
-  { event: "clerk/user.updated" },
+  {
+    id: "update-user-from-clerk",
+    triggers: { event: "clerk/user.updated" },
+  },
   async ({ event }) => {
     const {
       id,
@@ -52,15 +62,20 @@ const syncUserUpdation = inngest.createFunction(
       email_addresses,
       image_url,
     } = event.data;
+    
 
     const userData = {
-      _id: id,
-      email: email_addresses[0].email_address,
+      email: email_addresses?.[0]?.email_address || "",
       name: `${first_name || ""} ${last_name || ""}`.trim(),
-      image: image_url,
+      image: image_url || "",
     };
 
-    await User.findByIdAndUpdate(id, userData);
+    await User.findByIdAndUpdate(id, userData, {
+      new: true,
+      upsert: true,
+    });
+
+    return { success: true };
   }
 );
 
