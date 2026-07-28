@@ -12,8 +12,11 @@ import Loading from "../../components/Loading";
 import Title from "../../components/Title";
 import BlurCircle from "../../components/BlurCircle";
 import  dateFormat  from "../../libs/dateFormat";
+import { useAppContext } from "../../../context/AppContext";
 
 const Dashboard = () => {
+
+   const { axios, getToken, user } = useAppContext(); 
   const currency = import.meta.env.VITE_CURRENCY;
 
   const [dashboardData, setDashboardData] = useState({
@@ -49,13 +52,47 @@ const Dashboard = () => {
   ];
 
   const fetchDashboardData = async () => {
-    setDashboardData(dummyDashboardData);
+  try {
+    setLoading(true);
+
+    const token = await getToken();
+
+    const { data } = await axios.get(
+      "/api/admin/dashboard",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (data.success) {
+      setDashboardData(data.dashboardData);
+    } else {
+      toast.error(
+        data.message || "Failed to fetch dashboard data."
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Error fetching dashboard data:",
+      error.response?.data || error.message
+    );
+
+    toast.error(
+      error.response?.data?.message ||
+        "Error fetching dashboard data."
+    );
+  } finally {
     setLoading(false);
-  };
+  }
+};
 
   useEffect(() => {
+  if (user) {
     fetchDashboardData();
-  }, []);
+  }
+}, [user]);
 
   return !loading ? (
     <>
@@ -98,12 +135,15 @@ const Dashboard = () => {
             key={show._id}
             className="w-55 rounded-lg overflow-hidden h-full pb-3 bg-red-500/10 border border-red-500/20 hover:-translate-y-1 transition duration-300"
           >
-            <img
-              src={show.movie.poster_path}
-              alt={show.movie.title}
-              className="h-60 w-full object-cover"
-            />
-
+           <img
+  src={
+    show.movie.poster_path?.startsWith("http")
+      ? show.movie.poster_path
+      : `${import.meta.env.VITE_TMDB_IMAGE_BASE_URL}${show.movie.poster_path}`
+  }
+  alt={show.movie.title}
+  className="h-60 w-full object-cover"
+/>
             <p className="font-medium p-2 truncate">
               {show.movie.title}
             </p>

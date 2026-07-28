@@ -6,22 +6,36 @@ import { serve } from "inngest/express";
 
 import connectDB from "./configs/db.js";
 import { inngest, functions } from "./inngest/index.js";
+import showRouter from "./routes/showRoutes.js";
+import bookingRouter from "./routes/bookingRoutes.js";
+import adminRouter from "./routes/adminRoutes.js";
+import userRouter from "./routes/userRoutes.js";
+
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 await connectDB();
 
+// Stripe Webhooks Route
+app.use(
+  "/api/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhooks
+);
+
+
 // Middleware
 app.use(express.json());
 app.use(cors());
 app.use(clerkMiddleware());
 
-// API routes
+// Home route
 app.get("/", (req, res) => {
   res.send("Server is Live!");
 });
 
+// Inngest route
 app.use(
   "/api/inngest",
   serve({
@@ -30,6 +44,11 @@ app.use(
   })
 );
 
+// Show routes
+app.use("/api/show", showRouter);
+app.use("/api/booking", bookingRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/user",userRouter);
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });

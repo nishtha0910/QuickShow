@@ -1,2 +1,6 @@
 node_module
-    
+   # Environment files
+.env
+**/.env
+client/.env
+server/.env 
