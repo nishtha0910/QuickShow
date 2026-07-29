@@ -197,7 +197,7 @@ const releaseSeatsAndDeleteBooking =
     }
   );
 
-  // Send confirmation email after successful booking
+  // Send confirmation email after successful payment
 const sendBookingConfirmationEmail =
   inngest.createFunction(
     {
@@ -210,12 +210,12 @@ const sendBookingConfirmationEmail =
       const { bookingId } = event.data;
 
       if (!bookingId) {
-        return {
-          success: false,
-          message: "Booking ID was not provided.",
-        };
+        throw new Error(
+          "Booking ID was not provided."
+        );
       }
 
+      // Get booking, show, movie, and user details
       const booking = await step.run(
         "get-booking-details",
         async () => {
@@ -228,57 +228,95 @@ const sendBookingConfirmationEmail =
               },
             })
             .populate("user");
-
-            await sendEmail({
-  to: booking.user.email,
-  subject: `Payment Confirmation: "${booking.show.movie.title}" booked!`,
-  body: `
-    <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-      <h2>Hi ${booking.user.name},</h2>
-
-      <p>
-        Your booking for
-        <strong style="color:#F84565;">
-          "${booking.show.movie.title}"
-        </strong>
-        is confirmed.
-      </p>
-
-      <p>
-        <strong>Date:</strong>
-        ${new Date(
-          booking.show.showDateTime
-        ).toLocaleDateString("en-US")}<br/>
-
-        <strong>Time:</strong>
-        ${new Date(
-          booking.show.showDateTime
-        ).toLocaleTimeString("en-US")}
-      </p>
-
-      <p>Enjoy the show! 🍿</p>
-
-      <p>
-        Thanks for booking with us!<br/>
-        <strong>QuickShow Team</strong>
-      </p>
-    </div>
-  `,
-});
         }
       );
 
-
       if (!booking) {
-        return {
-          success: false,
-          message: "Booking not found.",
-        };
+        throw new Error("Booking not found.");
       }
+
+      if (!booking.user) {
+        throw new Error(
+          "Booking user was not found."
+        );
+      }
+
+      if (!booking.user.email) {
+        throw new Error(
+          "User email was not found."
+        );
+      }
+
+      if (!booking.show?.movie) {
+        throw new Error(
+          "Show or movie details were not found."
+        );
+      }
+
+      // Send the confirmation email
+      await step.run(
+        "send-confirmation-email",
+        async () => {
+          return await sendEmail({
+            to: booking.user.email,
+
+            subject: `Payment Confirmation: "${booking.show.movie.title}" booked!`,
+
+            body: `
+              <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+                <h2>Hi ${booking.user.name || "Customer"},</h2>
+
+                <p>
+                  Your booking for
+                  <strong style="color: #F84565;">
+                    "${booking.show.movie.title}"
+                  </strong>
+                  is confirmed.
+                </p>
+
+                <p>
+                  <strong>Date:</strong>
+                  ${new Date(
+                    booking.show.showDateTime
+                  ).toLocaleDateString("en-US")}
+                  <br/>
+
+                  <strong>Time:</strong>
+                  ${new Date(
+                    booking.show.showDateTime
+                  ).toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </p>
+
+                <p>
+                  <strong>Seats:</strong>
+                  ${booking.bookedSeats.join(", ")}
+                </p>
+
+                <p>
+                  <strong>Total:</strong>
+                  $${booking.amount}
+                </p>
+
+                <p>Enjoy the show! 🍿</p>
+
+                <p>
+                  Thanks for booking with us!
+                  <br/>
+                  <strong>QuickShow Team</strong>
+                </p>
+              </div>
+            `,
+          });
+        }
+      );
 
       return {
         success: true,
-        message: "Booking details loaded.",
+        message:
+          "Booking confirmation email sent successfully.",
         bookingId: booking._id.toString(),
       };
     }
