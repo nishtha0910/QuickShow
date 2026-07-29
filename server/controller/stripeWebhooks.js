@@ -1,10 +1,15 @@
 import Stripe from "stripe";
-import Booking from "../models/Booking.js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+import Booking from "../models/Booking.js";
+import { inngest } from "../inngest/index.js";
+
+const stripe = new Stripe(
+  process.env.STRIPE_SECRET_KEY
+);
 
 export const stripeWebhooks = async (req, res) => {
-  const signature = req.headers["stripe-signature"];
+  const signature =
+    req.headers["stripe-signature"];
 
   let event;
 
@@ -20,40 +25,61 @@ export const stripeWebhooks = async (req, res) => {
       error.message
     );
 
-    return res.status(400).send(
-      `Webhook Error: ${error.message}`
-    );
+    return res
+      .status(400)
+      .send(`Webhook Error: ${error.message}`);
   }
 
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object;
-        const bookingId = session.metadata?.bookingId;
+
+        const bookingId =
+          session.metadata?.bookingId;
 
         if (!bookingId) {
           console.error(
             "Booking ID missing from Stripe metadata"
           );
-          break;
+
+          return res.status(400).json({
+            success: false,
+            message:
+              "Booking ID missing from Stripe metadata.",
+          });
         }
 
-        await Booking.findByIdAndUpdate(
-          bookingId,
-          {
-            isPaid: true,
-            paymentLink: "",
-          }
-        );
+        const booking =
+          await Booking.findByIdAndUpdate(
+            bookingId,
+            {
+              isPaid: true,
+              paymentLink: "",
+            },
+            {
+              new: true,
+            }
+          );
 
-        
-// Send confirmation email event
-await inngest.send({
-  name: "app/show.booked",
-  data: {
-    bookingId: booking._id.toString(),
-  },
-});
+        if (!booking) {
+          console.error(
+            `Booking ${bookingId} was not found`
+          );
+
+          return res.status(404).json({
+            success: false,
+            message: "Booking not found.",
+          });
+        }
+
+        // Trigger the confirmation email function
+        await inngest.send({
+          name: "app/show.booked",
+          data: {
+            bookingId: booking._id.toString(),
+          },
+        });
 
         console.log(
           `Booking ${bookingId} marked as paid`
@@ -64,7 +90,9 @@ await inngest.send({
 
       case "checkout.session.expired": {
         const session = event.data.object;
-        const bookingId = session.metadata?.bookingId;
+
+        const bookingId =
+          session.metadata?.bookingId;
 
         if (bookingId) {
           console.log(
@@ -93,7 +121,9 @@ await inngest.send({
 
     return res.status(500).json({
       success: false,
-      message: "Webhook processing failed",
+      message:
+        error.message ||
+        "Webhook processing failed.",
     });
   }
 };
