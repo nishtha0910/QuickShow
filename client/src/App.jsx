@@ -18,6 +18,7 @@ import ListShows from "./pages/admin/ListShows";
 import Dashboard from "./pages/admin/Dashboard";
 import Layout from "./pages/admin/Layout";
 import AddShow from "./pages/admin/AddShow";
+import Loading from "./components/Loading";
 
 import { useAppContext } from "../context/AppContext";
 

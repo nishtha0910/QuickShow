@@ -2,6 +2,7 @@ import Stripe from "stripe";
 
 import Show from "../models/Show.js";
 import Booking from "../models/Booking.js";
+import { inngest } from "../inngest/index.js";
 
 // Initialize Stripe
 const stripeInstance = new Stripe(
@@ -71,6 +72,14 @@ export const createBooking = async (req, res) => {
       });
     }
 
+    if (selectedSeats.length > 5) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You can select a maximum of 5 seats.",
+      });
+    }
+
     // Check selected-seat availability
     const isAvailable =
       await checkSeatsAvailability(
@@ -86,7 +95,7 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // Get the show and movie details
+    // Get show and movie details
     const showData = await Show.findById(
       showId
     ).populate("movie");
@@ -109,7 +118,7 @@ export const createBooking = async (req, res) => {
       Number(showData.showPrice) *
       selectedSeats.length;
 
-    // Create an unpaid booking
+    // Create unpaid booking
     const booking = await Booking.create({
       user: userId,
       show: showId,
@@ -118,7 +127,7 @@ export const createBooking = async (req, res) => {
       isPaid: false,
     });
 
-    // Mark the selected seats as occupied
+    // Mark selected seats as occupied
     if (!showData.occupiedSeats) {
       showData.occupiedSeats = {};
     }
@@ -130,11 +139,10 @@ export const createBooking = async (req, res) => {
     showData.markModified("occupiedSeats");
     await showData.save();
 
-    // Stripe line item
+    // Create Stripe line item
     const lineItems = [
       {
         price_data: {
-          // Use "cad" here when your prices are Canadian dollars
           currency:
             process.env.STRIPE_CURRENCY || "cad",
 
@@ -145,7 +153,6 @@ export const createBooking = async (req, res) => {
             )}`,
           },
 
-          // Stripe expects the smallest currency unit
           unit_amount: Math.round(
             totalAmount * 100
           ),
@@ -159,7 +166,7 @@ export const createBooking = async (req, res) => {
     const session =
       await stripeInstance.checkout.sessions.create({
         success_url: `${origin}/loading/my-bookings`,
-    cancel_url: `${origin}/my-bookings`,
+        cancel_url: `${origin}/my-bookings`,
 
         line_items: lineItems,
         mode: "payment",
@@ -172,12 +179,20 @@ export const createBooking = async (req, res) => {
 
         expires_at:
           Math.floor(Date.now() / 1000) +
-          30 * 60,
+          10 * 60,
       });
 
-    // Save the Stripe payment link
+    // Save Stripe payment link
     booking.paymentLink = session.url;
     await booking.save();
+
+    // Start Inngest payment check
+    await inngest.send({
+      name: "app/checkpayment",
+      data: {
+        bookingId: booking._id.toString(),
+      },
+    });
 
     return res.status(201).json({
       success: true,
@@ -208,6 +223,13 @@ export const getOccupiedSeats = async (
 ) => {
   try {
     const { showId } = req.params;
+
+    if (!showId) {
+      return res.status(400).json({
+        success: false,
+        message: "Show ID is required.",
+      });
+    }
 
     const showData = await Show.findById(
       showId
@@ -242,3 +264,5 @@ export const getOccupiedSeats = async (
     });
   }
 };
+
+
