@@ -197,9 +197,97 @@ const releaseSeatsAndDeleteBooking =
     }
   );
 
+  // Send confirmation email after successful booking
+const sendBookingConfirmationEmail =
+  inngest.createFunction(
+    {
+      id: "send-booking-confirmation-email",
+      triggers: {
+        event: "app/show.booked",
+      },
+    },
+    async ({ event, step }) => {
+      const { bookingId } = event.data;
+
+      if (!bookingId) {
+        return {
+          success: false,
+          message: "Booking ID was not provided.",
+        };
+      }
+
+      const booking = await step.run(
+        "get-booking-details",
+        async () => {
+          return await Booking.findById(bookingId)
+            .populate({
+              path: "show",
+              populate: {
+                path: "movie",
+                model: "Movie",
+              },
+            })
+            .populate("user");
+
+            await sendEmail({
+  to: booking.user.email,
+  subject: `Payment Confirmation: "${booking.show.movie.title}" booked!`,
+  body: `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+      <h2>Hi ${booking.user.name},</h2>
+
+      <p>
+        Your booking for
+        <strong style="color:#F84565;">
+          "${booking.show.movie.title}"
+        </strong>
+        is confirmed.
+      </p>
+
+      <p>
+        <strong>Date:</strong>
+        ${new Date(
+          booking.show.showDateTime
+        ).toLocaleDateString("en-US")}<br/>
+
+        <strong>Time:</strong>
+        ${new Date(
+          booking.show.showDateTime
+        ).toLocaleTimeString("en-US")}
+      </p>
+
+      <p>Enjoy the show! 🍿</p>
+
+      <p>
+        Thanks for booking with us!<br/>
+        <strong>QuickShow Team</strong>
+      </p>
+    </div>
+  `,
+});
+        }
+      );
+
+
+      if (!booking) {
+        return {
+          success: false,
+          message: "Booking not found.",
+        };
+      }
+
+      return {
+        success: true,
+        message: "Booking details loaded.",
+        bookingId: booking._id.toString(),
+      };
+    }
+  );
+
 export const functions = [
   syncUserCreation,
   syncUserDeletion,
   syncUserUpdation,
   releaseSeatsAndDeleteBooking,
+  sendBookingConfirmationEmail
 ];

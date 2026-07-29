@@ -177,9 +177,9 @@ export const createBooking = async (req, res) => {
           showId: showId.toString(),
         },
 
-        expires_at:
-          Math.floor(Date.now() / 1000) +
-          10 * 60,
+         expires_at:
+      Math.floor(Date.now() / 1000) +
+      31 * 60,
       });
 
     // Save Stripe payment link

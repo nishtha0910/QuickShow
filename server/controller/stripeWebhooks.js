@@ -46,6 +46,15 @@ export const stripeWebhooks = async (req, res) => {
           }
         );
 
+        
+// Send confirmation email event
+await inngest.send({
+  name: "app/show.booked",
+  data: {
+    bookingId: booking._id.toString(),
+  },
+});
+
         console.log(
           `Booking ${bookingId} marked as paid`
         );
