@@ -42,9 +42,12 @@ const Navbar = () => {
       <div className='flex items-center gap-8'>
         <SearchIcon className='max-md:hidden w-6 h-6 cursor-pointer' />
         {
-          !user ?(<button onClick={openSignIn} className='px-4 py-1 sm:px-7 sm:py-2 bg-primary hover:bg-primary-dull transition rounded-full font-medium cursor-pointer'>
-          Login
-        </button>) :( 
+          !user ?(<button
+  onClick={openSignIn}
+  className='px-4 py-2 sm:px-8 sm:py-3 bg-[#F84565] hover:bg-[#e63b5b] text-white rounded-full font-semibold transition-all duration-300 hover:scale-105 shadow-lg shadow-[#F84565]/30'
+>
+  Login
+</button>) :( 
           <UserButton>
             <UserButton.MenuItems> 
               <UserButton.Action  label="MyBooking" labelIcon={<TicketPlus width={15} />} onClick={() => navigate('/my-bookings')}/>
