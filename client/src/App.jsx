@@ -11,7 +11,7 @@ import MovieDetails from "./pages/MovieDetails";
 import SeatLayout from "./pages/SeatLayout";
 import Movies from "./pages/Movies";
 import MyBookings from "./pages/MyBookings";
-import Favorite from "./pages/Favorite";
+import Favorite from "./pages/favorite";
 
 import ListBookings from "./pages/admin/ListBookings";
 import ListShows from "./pages/admin/ListShows";
