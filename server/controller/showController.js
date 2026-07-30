@@ -25,7 +25,7 @@ export const getNowPlayingMovies = async (req, res) => {
     });
   } catch (error) {
     console.error(
-      "TMDB error:",
+      "TMDB now-playing error:",
       error.response?.data || error.message
     );
 
@@ -43,6 +43,142 @@ export const getNowPlayingMovies = async (req, res) => {
           error.message,
         failedUrl: error.config?.url,
       });
+  }
+};
+
+// API to get trailers for movies stored in the database
+export const getMovieTrailers = async (
+  req,
+  res
+) => {
+  try {
+    // Get movies already available in QuickShow
+    const movies = await Movie.find({})
+      .select("_id title backdrop_path poster_path")
+      .limit(8)
+      .lean();
+
+    if (movies.length === 0) {
+      return res.status(200).json({
+        success: true,
+        trailers: [],
+        message: "No movies are available.",
+      });
+    }
+
+    const trailerRequests = movies.map(
+      async (movie) => {
+        try {
+          const { data } = await axios.get(
+            `https://api.themoviedb.org/3/movie/${movie._id}/videos`,
+            {
+              headers: tmdbHeaders,
+              params: {
+                language: "en-US",
+              },
+            }
+          );
+
+          const videos = Array.isArray(data.results)
+            ? data.results
+            : [];
+
+          // First preference: official YouTube trailer
+          let trailer = videos.find(
+            (video) =>
+              video.site === "YouTube" &&
+              video.type === "Trailer" &&
+              video.official === true
+          );
+
+          // Second preference: any YouTube trailer
+          if (!trailer) {
+            trailer = videos.find(
+              (video) =>
+                video.site === "YouTube" &&
+                video.type === "Trailer"
+            );
+          }
+
+          // Third preference: official YouTube teaser
+          if (!trailer) {
+            trailer = videos.find(
+              (video) =>
+                video.site === "YouTube" &&
+                video.type === "Teaser" &&
+                video.official === true
+            );
+          }
+
+          // Final preference: any YouTube video
+          if (!trailer) {
+            trailer = videos.find(
+              (video) =>
+                video.site === "YouTube"
+            );
+          }
+
+          if (!trailer) {
+            return null;
+          }
+
+          return {
+            movieId: movie._id.toString(),
+            title: movie.title,
+            trailerName: trailer.name,
+            videoKey: trailer.key,
+            videoUrl:
+              `https://www.youtube.com/watch?v=${trailer.key}`,
+            embedUrl:
+              `https://www.youtube.com/embed/${trailer.key}`,
+            thumbnail:
+              `https://img.youtube.com/vi/${trailer.key}/maxresdefault.jpg`,
+            fallbackThumbnail:
+              `https://img.youtube.com/vi/${trailer.key}/hqdefault.jpg`,
+            backdrop_path:
+              movie.backdrop_path,
+            poster_path:
+              movie.poster_path,
+            official:
+              trailer.official || false,
+            publishedAt:
+              trailer.published_at || null,
+          };
+        } catch (error) {
+          console.error(
+            `Trailer error for ${movie.title}:`,
+            error.response?.data ||
+              error.message
+          );
+
+          return null;
+        }
+      }
+    );
+
+    const results = await Promise.all(
+      trailerRequests
+    );
+
+    const trailers = results.filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      trailers,
+    });
+  } catch (error) {
+    console.error(
+      "Get movie trailers error:",
+      error.response?.data ||
+        error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to get movie trailers.",
+    });
   }
 };
 
@@ -64,6 +200,19 @@ export const addShow = async (req, res) => {
         success: false,
         message:
           "movieId, showsInput and showPrice are required.",
+      });
+    }
+
+    const price = Number(showPrice);
+
+    if (
+      Number.isNaN(price) ||
+      price <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Show price must be a valid positive number.",
       });
     }
 
@@ -106,7 +255,8 @@ export const addShow = async (req, res) => {
       const movieDetails = {
         _id: String(movieId),
         title: movieApiData.title,
-        overview: movieApiData.overview,
+        overview:
+          movieApiData.overview,
         poster_path:
           movieApiData.poster_path,
         backdrop_path:
@@ -117,11 +267,14 @@ export const addShow = async (req, res) => {
           movieApiData.original_language,
         tagline:
           movieApiData.tagline || "",
-        genres: movieApiData.genres,
-        casts: movieCreditsData.cast,
+        genres:
+          movieApiData.genres || [],
+        casts:
+          movieCreditsData.cast || [],
         vote_average:
           movieApiData.vote_average,
-        runtime: movieApiData.runtime,
+        runtime:
+          movieApiData.runtime,
       };
 
       movie = await Movie.create(
@@ -156,8 +309,7 @@ export const addShow = async (req, res) => {
           showsToCreate.push({
             movie: String(movieId),
             showDateTime,
-            showPrice:
-              Number(showPrice),
+            showPrice: price,
             occupiedSeats: {},
           });
         }
@@ -178,16 +330,25 @@ export const addShow = async (req, res) => {
       );
 
     // Notify users that a new show was added
-    await inngest.send({
-      name: "app/show.added",
-      data: {
-        movieTitle: movie.title,
-        movieId:
-          movie._id.toString(),
-        createdShowCount:
-          createdShows.length,
-      },
-    });
+    try {
+      await inngest.send({
+        name: "app/show.added",
+        data: {
+          movieTitle: movie.title,
+          movieId:
+            movie._id.toString(),
+          createdShowCount:
+            createdShows.length,
+        },
+      });
+    } catch (inngestError) {
+      // The shows should remain saved even if
+      // the notification event cannot be sent
+      console.error(
+        "New-show notification event error:",
+        inngestError.message
+      );
+    }
 
     return res.status(201).json({
       success: true,
@@ -221,12 +382,13 @@ export const addShow = async (req, res) => {
           error.response?.data
             ?.status_message ||
           error.message,
-        failedUrl: error.config?.url,
+        failedUrl:
+          error.config?.url,
       });
   }
 };
 
-// API to get all upcoming shows from the database
+// API to get all upcoming shows
 export const getShows = async (
   req,
   res
@@ -243,8 +405,7 @@ export const getShows = async (
       });
 
     // Keep only unique movies
-    const uniqueShows =
-      new Map();
+    const uniqueShows = new Map();
 
     shows.forEach((show) => {
       if (show.movie) {
@@ -255,30 +416,42 @@ export const getShows = async (
       }
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       shows: Array.from(
         uniqueShows.values()
       ),
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Get shows error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message:
+        error.message ||
+        "Failed to get shows.",
     });
   }
 };
 
-// API to get one movie and all its upcoming showtimes
+// API to get one movie and all upcoming showtimes
 export const getShow = async (
   req,
   res
 ) => {
   try {
-    const { movieId } =
-      req.params;
+    const { movieId } = req.params;
+
+    if (!movieId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Movie ID is required.",
+      });
+    }
 
     const shows = await Show.find({
       movie: movieId,
@@ -298,7 +471,7 @@ export const getShow = async (
       return res.status(404).json({
         success: false,
         message:
-          "Movie not found",
+          "Movie not found.",
       });
     }
 
@@ -317,21 +490,27 @@ export const getShow = async (
       dateTime[date].push({
         time:
           show.showDateTime,
-        showId: show._id,
+        showId:
+          show._id,
       });
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       movie,
       dateTime,
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Get show error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message:
+        error.message ||
+        "Failed to get show details.",
     });
   }
 };
